@@ -1,10 +1,17 @@
+import queue
 from flask import request
 from ..models import db, Cancion, CancionSchema, Usuario, UsuarioSchema, Album, AlbumSchema
 from flask_restful import Resource
 from sqlalchemy.exc import IntegrityError
 from flask_jwt_extended import jwt_required, create_access_token
 from datetime import datetime
-from ..tareas import registrar_log
+from celery import Celery
+
+celery_app = Celery(__name__, broker='redis://localhost:6379/0')
+
+@celery_app.task(name='registrar_log')
+def registrar_log(*args):
+    pass
 
 cancion_schema = CancionSchema()
 usuario_schema = UsuarioSchema()
@@ -48,7 +55,8 @@ class VistaLogIn(Resource):
             u_contrasena = request.json["contrasena"]
             usuario = Usuario.query.filter_by(nombre=u_nombre, contrasena = u_contrasena).all()
             if usuario:
-                registrar_log.delay(u_nombre, datetime.utcnow())
+                args = (u_nombre, datetime.now())
+                registrar_log.apply_async(args=args, queue='logs')
                 return {'mensaje':'Inicio de sesión exitoso'}, 200
             else:
                 return {'mensaje':'Nombre de usuario o contraseña incorrectos'}, 401
